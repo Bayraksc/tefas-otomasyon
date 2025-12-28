@@ -7,7 +7,7 @@ import time
 import csv
 
 # --- AYARLAR ---
-fon_kodlari = ["ATE", "HES", "AMZ", "YKT", "MAC", "IDH", "AMF", "FFZ", "YLB", "FEI", "AJR", "BPH", "AFA", "ALI", "AHL", "HKM", "CFA", "YDI", "CHG", "AGA", "TGE"]
+fon_kodlari = ["ATE", "HES", "AMZ", "YKT", "MAC", "IDH", "AMF", "FFZ", "YLB", "FEI", "AJR", "BPH", "AFA", "ALI", "AHL", "HKM", "CFA", "YDI", "CHG", "AGA", "TGE","KUT","RBH","MPS"]
 
 # BURAYI DUZELTTIK:
 dosya_adi = "guncel_fonlar.csv"
