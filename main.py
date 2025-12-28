@@ -1,112 +1,56 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import pandas as pd
 import time
-from datetime import datetime
 
-# --- LİSTE ---
-FONLAR = list(set([
-    "AJR", "CHG", "ATE", "CFA", "HES", "AHL", "ALI", "BPH", 
-    "FEI", "AGA", "AMF", "AMZ", "FFZ", "YLB", "YKT", "YDI", 
-    "AFA", "HKM", "IDH", "MAC", "TGE"
-]))
+# --- AYARLAR ---
+fon_kodlari = ["ATE", "HES", "AMZ", "YKT", "MAC", "IDH", "AMF", "FFZ", "YLB", "FEI", "AJR", "BPH", "AFA", "ALI", "AHL", "HKM", "CFA", "YDI", "CHG", "AGA", "TGE"]
 
-def verileri_getir():
-    print("🚀 PRO Selenium Motoru Başlatılıyor (Anti-Detect Modu)...")
-
-    # --- AYARLAR: GELİŞMİŞ GİZLİLİK ---
+def get_tefas_price():
+    # Tarayıcı Ayarları (Hız için Headless mod ve Anti-Blok önlemleri)
     chrome_options = Options()
-    chrome_options.add_argument("--headless") 
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--headless") # Arka planda çalıştır (Pencere açmaz)
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    # Robotu gizleyen kritik komutlar
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled") 
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option('useAutomationExtension', False)
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-    
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-    
-    # JavaScript ile 'navigator.webdriver' özelliğini siliyoruz (Robot olduğumuzu gizler)
-    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36")
 
-    sonuclar = []
+    driver = webdriver.Chrome(options=chrome_options)
+    print(f"🚀 Veri çekme işlemi başladı... ({len(fon_kodlari)} Fon)")
+    print("-" * 30)
 
     try:
-        # 1. ADIM: OTURUM ISITMA (Session Priming)
-        # Doğrudan fon linkine gitmeden önce ana sayfaya gidip "Cookie" alıyoruz.
-        print("🌍 Ana sayfaya bağlanılıyor (Oturum Açılıyor)...")
-        driver.get("https://www.tefas.gov.tr")
-        time.sleep(3) # Çerezlerin oturması için bekle
-
-        for fon_kodu in FONLAR:
-            url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fon_kodu}"
-            print(f"-> {fon_kodu} verisi isteniyor...")
-            
+        for fon in fon_kodlari:
             try:
+                # 1. Doğrudan Fonun Detay Sayfasına Git
+                url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fon}"
                 driver.get(url)
-                
-                # AKILLI BEKLEME (Explicit Wait)
-                # Sayfanın yüklenmesini değil, "Son Fiyat" yazan kutunun belirmesini bekle (Max 20 sn)
-                wait = WebDriverWait(driver, 20)
-                
-                # Fiyat elementini bekle (.top-list içindeki ilk span)
-                fiyat_element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".top-list > li:nth-child(1) > span")))
-                fiyat_text = fiyat_element.text
-                
-                # Tarihi al
-                tarih_element = driver.find_element(By.CSS_SELECTOR, ".top-list > li:nth-child(1)")
-                tarih_ham = tarih_element.text 
-                tarih_str = tarih_ham.split('(')[-1].split(')')[0]
-                
-                # Başlığı al
-                baslik_element = driver.find_element(By.ID, "MainContent_PanelInfo")
-                baslik_text = baslik_element.find_element(By.TAG_NAME, "h1").text
 
-                print(f"   ✅ ALINDI: {fiyat_text} | {baslik_text}")
-
-                sonuclar.append({
-                    'Tarih': tarih_str,
-                    'Fon Kodu': fon_kodu,
-                    'Fon Adi': baslik_text,
-                    'Fiyat': fiyat_text
-                })
+                # 2. "Son Fiyat" verisinin yüklenmesini bekle (En fazla 10 sn)
+                # XPath Mantığı: 'top-list' sınıfına sahip listenin ilk elemanındaki span'ı bul.
+                wait = WebDriverWait(driver, 10)
                 
+                # Fiyat genelde ilk sırada çıkar: Son Fiyat: X,XXXXXX
+                fiyat_elementi = wait.until(EC.presence_of_element_located((By.XPATH, "//ul[@class='top-list']/li[1]/span")))
+                
+                fiyat = fiyat_elementi.text
+                
+                # Sonucu Yazdır
+                print(f"✅ {fon}: {fiyat}")
+                
+                # Seri isteklerde IP ban yememek için minik bekleme
+                time.sleep(0.5) 
+
             except Exception as e:
-                # Hata durumunda sayfanın o anki HTML'inden ufak bir parça göster ki ne olduğunu anlayalım
-                body_text = driver.find_element(By.TAG_NAME, "body").text[:100]
-                print(f"   ❌ HATA ({fon_kodu}): Veri gelmedi. Sayfada görünen: {body_text}...")
-                continue
-
-    except Exception as e:
-        print(f"GENEL SİSTEM HATASI: {e}")
+                print(f"❌ {fon}: Veri alınamadı.")
+                
+    except Exception as general_error:
+        print(f"Genel Hata: {general_error}")
     finally:
         driver.quit()
-        print("🛑 Tarayıcı Kapatıldı.")
-
-    # --- CSV KAYIT ---
-    if sonuclar:
-        df = pd.DataFrame(sonuclar)
-        
-        # Tarih Sıralama
-        df['Tarih_Obj'] = pd.to_datetime(df['Tarih'], format='%d.%m.%Y', errors='coerce')
-        df = df.sort_values(by='Tarih_Obj', ascending=False)
-        df = df.drop(columns=['Tarih_Obj'])
-
-        # Kaydet
-        df.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig', sep=';')
-        
-        print(f"\nBAŞARILI! Toplam {len(df)} fon verisi CSV'ye yazıldı.")
-        print(df[['Tarih', 'Fon Kodu', 'Fiyat']])
-    else:
-        print("HATA: Hiçbir veri çekilemedi. TEFAS robotu engelliyor olabilir.")
+        print("-" * 30)
+        print("🛑 İşlem Tamamlandı.")
 
 if __name__ == "__main__":
-    verileri_getir()
+    get_tefas_price()
