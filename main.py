@@ -7,7 +7,7 @@ import pandas as pd
 import time
 from datetime import datetime
 
-# --- SENİN LİSTEN (HEPSİ) ---
+# --- TÜM LİSTE (YATIRIM + EMEKLİLİK + OKS) ---
 FONLAR = list(set([
     "AJR", "CHG", "ATE", "CFA", "HES", "AHL", "ALI", "BPH", 
     "FEI", "AGA", "AMF", "AMZ", "FFZ", "YLB", "YKT", "YDI", 
@@ -15,52 +15,51 @@ FONLAR = list(set([
 ]))
 
 def verileri_getir():
-    print("🚀 Selenium Motoru Başlatılıyor...")
+    print("🚀 Gizli Selenium Motoru Başlatılıyor...")
 
-    # 1. CHROME AYARLARI (HEADLESS MOD)
-    # GitHub sunucusunda ekran olmadığı için 'headless' olmak zorunda.
+    # --- AYARLAR: KİMLİK GİZLEME (ANTI-BOT) ---
     chrome_options = Options()
     chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
+    # ÖNEMLİ 1: Pencere boyutu ver (Robotlar genelde 0x0 olur)
+    chrome_options.add_argument("--window-size=1920,1080")
+    # ÖNEMLİ 2: Gerçek insan kimliği (User-Agent)
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    # Tarayıcıyı Başlat
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
     sonuclar = []
 
     try:
-        # Her fon için tek tek sayfasına git
         for fon_kodu in FONLAR:
             url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fon_kodu}"
-            print(f"-> {fon_kodu} bağlanılıyor...")
-            
-            driver.get(url)
-            # Sayfanın yüklenmesi için kısa bir bekleme (Garanti olsun)
-            time.sleep(1) 
+            print(f"-> {fon_kodu} taranıyor...")
             
             try:
-                # --- VERİYİ SAYFADAN KAZIMA (SCRAPING) ---
+                driver.get(url)
+                # ÖNEMLİ 3: Sayfanın tam yüklenmesi için 3 saniye bekle
+                time.sleep(3) 
+
+                # --- VERİYİ SÖK AL ---
                 
-                # 1. Fiyatı Bul (Genelde üst barda olur)
-                # XPath: class'ı 'top-list' olan ul'nin ilk li'sinin içindeki span
-                fiyat_element = driver.find_element(By.XPATH, "//*[@id='MainContent_PanelInfo']/div[1]/ul/li[1]/span")
+                # 1. Fiyat (Üst barın ilk kutusu)
+                # CSS Selector XPath'e göre daha sağlamdır
+                fiyat_element = driver.find_element(By.CSS_SELECTOR, ".top-list > li:nth-child(1) > span")
                 fiyat_text = fiyat_element.text
                 
-                # 2. Tarihi Bul (Son Fiyat (27.12.2025) yazan yer)
-                tarih_element = driver.find_element(By.XPATH, "//*[@id='MainContent_PanelInfo']/div[1]/ul/li[1]")
-                tarih_text_raw = tarih_element.text # "Son Fiyat (26.12.2025)" gelir
+                # 2. Tarih (Parantez içindeki tarih)
+                tarih_element = driver.find_element(By.CSS_SELECTOR, ".top-list > li:nth-child(1)")
+                tarih_ham = tarih_element.text # "Son Fiyat (27.12.2025)"
+                tarih_str = tarih_ham.split('(')[-1].split(')')[0]
                 
-                # Tarihi parantez içinden söküp alalım
-                # Örnek metin: "Son Fiyat (26.12.2025)" -> "26.12.2025"
-                tarih_str = tarih_text_raw.split('(')[-1].split(')')[0]
-                
-                # Fon Adını Bul
-                baslik_element = driver.find_element(By.XPATH, "//*[@id='MainContent_PanelInfo']/h1")
-                baslik_text = baslik_element.text
+                # 3. Fon Adı
+                baslik_element = driver.find_element(By.ID, "MainContent_PanelInfo")
+                baslik_text = baslik_element.find_element(By.TAG_NAME, "h1").text
 
-                # Veriyi listeye ekle
+                print(f"   ✅ Bulundu: {fiyat_text} - {tarih_str}")
+
                 sonuclar.append({
                     'Tarih': tarih_str,
                     'Fon Kodu': fon_kodu,
@@ -69,35 +68,34 @@ def verileri_getir():
                 })
                 
             except Exception as e:
-                print(f"HATA ({fon_kodu}): Veri okunamadı. Sayfa yapısı farklı olabilir. {e}")
+                # Hata olursa o anki sayfanın başlığını yazdıralım ki ne olduğunu anlayalım
+                page_title = driver.title
+                print(f"   ❌ HATA ({fon_kodu}): Eleman bulunamadı. Sayfa Başlığı: {page_title}")
+                # Hata detayını kısa kes
                 continue
 
     except Exception as e:
         print(f"GENEL HATA: {e}")
     finally:
-        # İş bitince tarayıcıyı kapat (RAM şişmesin)
         driver.quit()
         print("🛑 Tarayıcı Kapatıldı.")
 
-    # --- CSV OLUŞTURMA ---
+    # --- CSV KAYIT ---
     if sonuclar:
         df = pd.DataFrame(sonuclar)
         
-        # Tarih formatını standartlaştır (Opsiyonel, sıralama için iyi olur)
+        # Tarihe göre sırala
         df['Tarih_Obj'] = pd.to_datetime(df['Tarih'], format='%d.%m.%Y', errors='coerce')
         df = df.sort_values(by='Tarih_Obj', ascending=False)
-        df = df.drop(columns=['Tarih_Obj']) # Yardımcı sütunu sil
+        df = df.drop(columns=['Tarih_Obj'])
 
-        # Fiyat zaten virgüllü geliyor TEFAS'tan (TR formatında), dokunmaya gerek yok.
-        # Sadece emin olmak için temizlik yapabiliriz ama Selenium gördüğünü alır.
-        
-        # Dosyayı kaydet
+        # Kaydet
         df.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig', sep=';')
         
-        print(f"\nBAŞARILI! {len(df)} fon verisi Selenium ile çekildi.")
-        print(df)
+        print(f"\nBAŞARILI! {len(df)} adet fon verisi çekildi.")
+        print(df[['Tarih', 'Fon Kodu', 'Fiyat']])
     else:
-        print("HATA: Hiçbir veri listeye eklenemedi.")
+        print("HATA: Liste boş kaldı.")
 
 if __name__ == "__main__":
     verileri_getir()
