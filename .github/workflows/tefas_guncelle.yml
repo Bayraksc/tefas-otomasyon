@@ -1,15 +1,20 @@
-name: Günlük TEFAS Güncellemesi
+name: TEFAS Güncellemesi (Otomatik ve Manuel)
 
 on:
+  # 1. OTOMATİK ZAMANLAMA
   schedule:
-    # Hafta içi her gün (Pzt-Cum) Türkiye saatiyle 19:30'da çalışır
-    # (GitHub sunucuları UTC kullanır, 16:30 UTC = 19:30 TRT)
-    - cron: '30 16 * * 1-5'
-  workflow_dispatch: # İstersen butona basıp elle de tetikleyebilirsin
+    # UTC saatiyle 19:00 = Türkiye saatiyle 22:00
+    - cron: '0 19 * * *'
+  
+  # 2. MANUEL TETİKLEME BUTONU
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # Yazma izni şart
 
     steps:
       - name: Depoyu Çek (Checkout)
@@ -22,16 +27,27 @@ jobs:
 
       - name: Kütüphaneleri Yükle
         run: |
-          pip install -r requirements.txt
+          pip install selenium
 
       - name: Python Kodunu Çalıştır
         run: python main.py
 
-      - name: Değişiklikleri Kaydet ve Gönder (Commit & Push)
+      - name: Değişiklikleri Kaydet ve Gönder
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "actions@github.com"
-          git add guncel_fonlar.csv
-          # Eğer değişiklik varsa commit et, yoksa hata verme
-          git commit -m "Otomatik Güncelleme: Fon Fiyatları" || exit 0
-          git push
+          
+          # Dosya değişmiş mi kontrol et
+          if [[ -n $(git status -s) ]]; then
+            echo "Değişiklik var, kaydediliyor..."
+            git add guncel_fonlar.csv
+            git commit -m "Otomatik Güncelleme: Fon Fiyatları"
+            
+            # HATA ALMAMAK İÇİN ÖNCE GÜNCEL HALİ ÇEK (Rebase)
+            git pull --rebase origin main
+            
+            # SONRA GÖNDER
+            git push
+          else
+            echo "Değişiklik yok, işlem pas geçildi."
+          fi
