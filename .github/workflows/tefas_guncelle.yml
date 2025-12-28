@@ -1,0 +1,37 @@
+name: Günlük TEFAS Güncellemesi
+
+on:
+  schedule:
+    # Hafta içi her gün (Pzt-Cum) Türkiye saatiyle 19:30'da çalışır
+    # (GitHub sunucuları UTC kullanır, 16:30 UTC = 19:30 TRT)
+    - cron: '30 16 * * 1-5'
+  workflow_dispatch: # İstersen butona basıp elle de tetikleyebilirsin
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Depoyu Çek (Checkout)
+        uses: actions/checkout@v3
+
+      - name: Python Kurulumu
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Kütüphaneleri Yükle
+        run: |
+          pip install -r requirements.txt
+
+      - name: Python Kodunu Çalıştır
+        run: python main.py
+
+      - name: Değişiklikleri Kaydet ve Gönder (Commit & Push)
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add guncel_fonlar.csv
+          # Eğer değişiklik varsa commit et, yoksa hata verme
+          git commit -m "Otomatik Güncelleme: Fon Fiyatları" || exit 0
+          git push
