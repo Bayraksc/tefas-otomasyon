@@ -3,8 +3,8 @@ name: TEFAS Güncellemesi (Otomatik ve Manuel)
 on:
   # 1. OTOMATİK ZAMANLAMA
   schedule:
-    # UTC saatiyle 19:00 = Türkiye saatiyle 22:00
-    - cron: '0 18 17 * *'
+    # Her gün UTC 18:00 (TR saati ile 21:00)
+    - cron: '27 18 * * *'
   
   # 2. MANUEL TETİKLEME BUTONU
   workflow_dispatch:
@@ -39,15 +39,13 @@ jobs:
           
           # Dosya değişmiş mi kontrol et
           if [[ -n $(git status -s) ]]; then
-            echo "Değişiklik var, kaydediliyor..."
+            echo "Değişiklik tespit edildi. Commit yapılıyor..."
             git add guncel_fonlar.csv
             git commit -m "Otomatik Güncelleme: Fon Fiyatları"
             
-            # HATA ALMAMAK İÇİN ÖNCE GÜNCEL HALİ ÇEK (Rebase)
+            # Çakışmaları önlemek için önce çek, sonra gönder
             git pull --rebase origin main
-            
-            # SONRA GÖNDER
             git push
           else
-            echo "Değişiklik yok, işlem pas geçildi."
+            echo "Dosyada değişiklik yok (Veriler aynı), işlem pas geçildi."
           fi
