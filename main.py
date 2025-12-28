@@ -9,36 +9,41 @@ def verileri_getir():
     crawler = Crawler()
     
     bugun = datetime.now().date()
-    # DÜZELTME: 30 gün yerine 4 gün yapıyoruz. 
-    # Bu sayede işlem saniyeler içinde bitecek.
-    baslangic = bugun - timedelta(days=4) 
+    # 5 günlük tarama yeterli ve hızlıdır
+    baslangic = bugun - timedelta(days=5) 
     
-    print(f"Hızlı Tarama: {baslangic} - {bugun}")
+    print(f"Tarama: {baslangic} - {bugun}")
 
     try:
-        # start ve end komutları doğru, sadece tarih aralığı kısaldı
+        # Veriyi çek
         df = crawler.fetch(start=str(baslangic), end=str(bugun))
         
         if df is None or df.empty:
-            print("HATA: Veri dönmedi.")
+            print("Veri bulunamadı, boş dosya oluşturuluyor.")
+            # Boş dosya oluştur ama başlıkları ekle
+            with open("guncel_fonlar.csv", "w") as f:
+                f.write("Tarih;Fon Kodu;Fon Adi;Fiyat\n")
             return
 
         # Filtreleme
         df_bizim = df[df['code'].isin(FONLAR)].copy()
         
-        if df_bizim.empty:
-            print("HATA: Belirtilen fonlar bulunamadı.")
-            return
-
         # En güncel veriyi al
         df_bizim = df_bizim.sort_values(by='date', ascending=False)
         df_sonuc = df_bizim.drop_duplicates(subset=['code'], keep='first')
         
-        # Kayıt
+        # Sütunları seç
         df_sonuc = df_sonuc[['date', 'code', 'title', 'price']]
-        df_sonuc.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig')
         
-        print("BAŞARILI: Veriler ışık hızıyla kaydedildi.")
+        # --- KRİTİK MÜDAHALE (TÜRKÇELEŞTİRME) ---
+        # 1. Fiyat sütununu metne çevir ve noktayı virgüle yap
+        df_sonuc['price'] = df_sonuc['price'].astype(str).str.replace('.', ',', regex=False)
+        
+        # 2. Kaydederken ayırıcı olarak 'sep=;' kullanıyoruz.
+        # Böylece virgüllü fiyatlar sütunları karıştırmaz.
+        df_sonuc.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig', sep=';')
+        
+        print("BAŞARILI: Veriler Türkçe formatında (;) kaydedildi.")
         print(df_sonuc)
 
     except Exception as e:
