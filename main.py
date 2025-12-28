@@ -1,8 +1,13 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
 import pandas as pd
-from datetime import datetime, timedelta
+import time
+from datetime import datetime
 
-# --- HEDEF LİSTE ---
+# --- SENİN LİSTEN (HEPSİ) ---
 FONLAR = list(set([
     "AJR", "CHG", "ATE", "CFA", "HES", "AHL", "ALI", "BPH", 
     "FEI", "AGA", "AMF", "AMZ", "FFZ", "YLB", "YKT", "YDI", 
@@ -10,91 +15,89 @@ FONLAR = list(set([
 ]))
 
 def verileri_getir():
-    bugun = datetime.now().date()
-    baslangic = bugun - timedelta(days=5)
-    
-    bas_str = baslangic.strftime("%d.%m.%Y")
-    bit_str = bugun.strftime("%d.%m.%Y")
-    
-    print(f"Tarama: {bas_str} - {bit_str}")
-    
-    # --- KRİTİK EKLENTİ: KİMLİK KARTI (HEADERS) ---
-    # TEFAS robotları engeller, bu ayarlar bizi Chrome tarayıcısı gibi gösterir.
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://www.tefas.gov.tr/TarihselVeriler.aspx',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Origin': 'https://www.tefas.gov.tr',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-    }
+    print("🚀 Selenium Motoru Başlatılıyor...")
 
-    tum_veriler = []
+    # 1. CHROME AYARLARI (HEADLESS MOD)
+    # GitHub sunucusunda ekran olmadığı için 'headless' olmak zorunda.
+    chrome_options = Options()
+    chrome_options.add_argument("--headless") 
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    
+    # Tarayıcıyı Başlat
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    
+    sonuclar = []
 
-    # --- 1. YATIRIM FONLARI ---
     try:
-        payload = {'fontip': 'YAT', 'bastarih': bas_str, 'bittarih': bit_str}
-        r = requests.post('https://www.tefas.gov.tr/api/DB/BindHistoryInfo', data=payload, headers=headers)
-        data = r.json().get('data', [])
-        tum_veriler.extend(data)
-        print(f"-> Yatırım Fonları: {len(data)} veri")
+        # Her fon için tek tek sayfasına git
+        for fon_kodu in FONLAR:
+            url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fon_kodu}"
+            print(f"-> {fon_kodu} bağlanılıyor...")
+            
+            driver.get(url)
+            # Sayfanın yüklenmesi için kısa bir bekleme (Garanti olsun)
+            time.sleep(1) 
+            
+            try:
+                # --- VERİYİ SAYFADAN KAZIMA (SCRAPING) ---
+                
+                # 1. Fiyatı Bul (Genelde üst barda olur)
+                # XPath: class'ı 'top-list' olan ul'nin ilk li'sinin içindeki span
+                fiyat_element = driver.find_element(By.XPATH, "//*[@id='MainContent_PanelInfo']/div[1]/ul/li[1]/span")
+                fiyat_text = fiyat_element.text
+                
+                # 2. Tarihi Bul (Son Fiyat (27.12.2025) yazan yer)
+                tarih_element = driver.find_element(By.XPATH, "//*[@id='MainContent_PanelInfo']/div[1]/ul/li[1]")
+                tarih_text_raw = tarih_element.text # "Son Fiyat (26.12.2025)" gelir
+                
+                # Tarihi parantez içinden söküp alalım
+                # Örnek metin: "Son Fiyat (26.12.2025)" -> "26.12.2025"
+                tarih_str = tarih_text_raw.split('(')[-1].split(')')[0]
+                
+                # Fon Adını Bul
+                baslik_element = driver.find_element(By.XPATH, "//*[@id='MainContent_PanelInfo']/h1")
+                baslik_text = baslik_element.text
+
+                # Veriyi listeye ekle
+                sonuclar.append({
+                    'Tarih': tarih_str,
+                    'Fon Kodu': fon_kodu,
+                    'Fon Adi': baslik_text,
+                    'Fiyat': fiyat_text
+                })
+                
+            except Exception as e:
+                print(f"HATA ({fon_kodu}): Veri okunamadı. Sayfa yapısı farklı olabilir. {e}")
+                continue
+
     except Exception as e:
-        print(f"HATA (Yatırım): {e}")
+        print(f"GENEL HATA: {e}")
+    finally:
+        # İş bitince tarayıcıyı kapat (RAM şişmesin)
+        driver.quit()
+        print("🛑 Tarayıcı Kapatıldı.")
 
-    # --- 2. EMEKLİLİK (BES) FONLARI ---
-    try:
-        payload = {'fontip': 'EME', 'bastarih': bas_str, 'bittarih': bit_str}
-        r = requests.post('https://www.tefas.gov.tr/api/DB/BindHistoryInfo', data=payload, headers=headers)
-        data = r.json().get('data', [])
-        tum_veriler.extend(data)
-        print(f"-> BES Fonları: {len(data)} veri")
-    except Exception as e:
-        print(f"HATA (BES): {e}")
+    # --- CSV OLUŞTURMA ---
+    if sonuclar:
+        df = pd.DataFrame(sonuclar)
+        
+        # Tarih formatını standartlaştır (Opsiyonel, sıralama için iyi olur)
+        df['Tarih_Obj'] = pd.to_datetime(df['Tarih'], format='%d.%m.%Y', errors='coerce')
+        df = df.sort_values(by='Tarih_Obj', ascending=False)
+        df = df.drop(columns=['Tarih_Obj']) # Yardımcı sütunu sil
 
-    # --- İŞLEME ---
-    if not tum_veriler:
-        print("HATA: Veri çekilemedi. Header ayarları kontrol edilmeli.")
-        return
-
-    df = pd.DataFrame(tum_veriler)
-    df = df.rename(columns={'FONKODU': 'code', 'FONUNVAN': 'title', 'FIYAT': 'price', 'TARIH': 'date_raw'})
-    
-    # Listemizi filtrele
-    df_bizim = df[df['code'].isin(FONLAR)].copy()
-    
-    if df_bizim.empty:
-        print("UYARI: Seçilen fonlara ait veri gelmedi.")
-        return
-
-    # Fiyat düzeltme
-    df_bizim['price'] = df_bizim['price'].astype(str).str.replace(',', '.')
-    df_bizim['price'] = pd.to_numeric(df_bizim['price'], errors='coerce')
-
-    # Tarih düzeltme
-    def clean_date(d):
-        try:
-            ts = int(d.replace('/Date(','').replace(')/',''))
-            return datetime.fromtimestamp(ts/1000).date()
-        except:
-            return None
-    df_bizim['real_date'] = df_bizim['date_raw'].apply(clean_date)
-    
-    # En güncel veriyi al
-    df_bizim = df_bizim.sort_values(by='real_date', ascending=False)
-    df_sonuc = df_bizim.drop_duplicates(subset=['code'], keep='first')
-    
-    # ÇIKTI
-    final_df = pd.DataFrame()
-    final_df['Tarih'] = df_sonuc['real_date']
-    final_df['Fon Kodu'] = df_sonuc['code']
-    final_df['Fon Adi'] = df_sonuc['title']
-    
-    # Türkçe Fiyat (Virgüllü)
-    final_df['Fiyat'] = df_sonuc['price'].apply(lambda x: "{:,.6f}".format(x).replace('.', 'X').replace(',', '.').replace('X', ','))
-
-    final_df.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig', sep=';')
-    
-    print("\nBAŞARILI! Tüm fonlar (CHG dahil) çekildi.")
-    print(final_df[['Tarih', 'Fon Kodu', 'Fiyat']])
+        # Fiyat zaten virgüllü geliyor TEFAS'tan (TR formatında), dokunmaya gerek yok.
+        # Sadece emin olmak için temizlik yapabiliriz ama Selenium gördüğünü alır.
+        
+        # Dosyayı kaydet
+        df.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig', sep=';')
+        
+        print(f"\nBAŞARILI! {len(df)} fon verisi Selenium ile çekildi.")
+        print(df)
+    else:
+        print("HATA: Hiçbir veri listeye eklenemedi.")
 
 if __name__ == "__main__":
     verileri_getir()
