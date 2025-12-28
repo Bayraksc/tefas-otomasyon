@@ -2,8 +2,9 @@ from tefas import Crawler
 import pandas as pd
 from datetime import datetime, timedelta
 
+
 # --- AYARLAR ---
-FONLAR = ["TI3", "IDH", "MAC", "GMR", "TCD"]
+FONLAR = ["AJR", "CHG", "ATE", "CFA", "HES", "AHL", "ALI", "BPH", "FEI", "AGA", "AMF", "AMZ", "FFZ","YLB", "YKT", "YDI", "AFA", "HKM", "IDH", "MAC", "TGE"]
 
 def verileri_getir():
     crawler = Crawler()
