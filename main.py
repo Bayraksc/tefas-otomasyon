@@ -3,11 +3,13 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
 import time
 from datetime import datetime
 
-# --- TÜM LİSTE (YATIRIM + EMEKLİLİK + OKS) ---
+# --- LİSTE ---
 FONLAR = list(set([
     "AJR", "CHG", "ATE", "CFA", "HES", "AHL", "ALI", "BPH", 
     "FEI", "AGA", "AMF", "AMZ", "FFZ", "YLB", "YKT", "YDI", 
@@ -15,50 +17,60 @@ FONLAR = list(set([
 ]))
 
 def verileri_getir():
-    print("🚀 Gizli Selenium Motoru Başlatılıyor...")
+    print("🚀 PRO Selenium Motoru Başlatılıyor (Anti-Detect Modu)...")
 
-    # --- AYARLAR: KİMLİK GİZLEME (ANTI-BOT) ---
+    # --- AYARLAR: GELİŞMİŞ GİZLİLİK ---
     chrome_options = Options()
     chrome_options.add_argument("--headless") 
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    # ÖNEMLİ 1: Pencere boyutu ver (Robotlar genelde 0x0 olur)
     chrome_options.add_argument("--window-size=1920,1080")
-    # ÖNEMLİ 2: Gerçek insan kimliği (User-Agent)
+    # Robotu gizleyen kritik komutlar
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled") 
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
     chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
+    # JavaScript ile 'navigator.webdriver' özelliğini siliyoruz (Robot olduğumuzu gizler)
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
     sonuclar = []
 
     try:
+        # 1. ADIM: OTURUM ISITMA (Session Priming)
+        # Doğrudan fon linkine gitmeden önce ana sayfaya gidip "Cookie" alıyoruz.
+        print("🌍 Ana sayfaya bağlanılıyor (Oturum Açılıyor)...")
+        driver.get("https://www.tefas.gov.tr")
+        time.sleep(3) # Çerezlerin oturması için bekle
+
         for fon_kodu in FONLAR:
             url = f"https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod={fon_kodu}"
-            print(f"-> {fon_kodu} taranıyor...")
+            print(f"-> {fon_kodu} verisi isteniyor...")
             
             try:
                 driver.get(url)
-                # ÖNEMLİ 3: Sayfanın tam yüklenmesi için 3 saniye bekle
-                time.sleep(3) 
-
-                # --- VERİYİ SÖK AL ---
                 
-                # 1. Fiyat (Üst barın ilk kutusu)
-                # CSS Selector XPath'e göre daha sağlamdır
-                fiyat_element = driver.find_element(By.CSS_SELECTOR, ".top-list > li:nth-child(1) > span")
+                # AKILLI BEKLEME (Explicit Wait)
+                # Sayfanın yüklenmesini değil, "Son Fiyat" yazan kutunun belirmesini bekle (Max 20 sn)
+                wait = WebDriverWait(driver, 20)
+                
+                # Fiyat elementini bekle (.top-list içindeki ilk span)
+                fiyat_element = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, ".top-list > li:nth-child(1) > span")))
                 fiyat_text = fiyat_element.text
                 
-                # 2. Tarih (Parantez içindeki tarih)
+                # Tarihi al
                 tarih_element = driver.find_element(By.CSS_SELECTOR, ".top-list > li:nth-child(1)")
-                tarih_ham = tarih_element.text # "Son Fiyat (27.12.2025)"
+                tarih_ham = tarih_element.text 
                 tarih_str = tarih_ham.split('(')[-1].split(')')[0]
                 
-                # 3. Fon Adı
+                # Başlığı al
                 baslik_element = driver.find_element(By.ID, "MainContent_PanelInfo")
                 baslik_text = baslik_element.find_element(By.TAG_NAME, "h1").text
 
-                print(f"   ✅ Bulundu: {fiyat_text} - {tarih_str}")
+                print(f"   ✅ ALINDI: {fiyat_text} | {baslik_text}")
 
                 sonuclar.append({
                     'Tarih': tarih_str,
@@ -68,14 +80,13 @@ def verileri_getir():
                 })
                 
             except Exception as e:
-                # Hata olursa o anki sayfanın başlığını yazdıralım ki ne olduğunu anlayalım
-                page_title = driver.title
-                print(f"   ❌ HATA ({fon_kodu}): Eleman bulunamadı. Sayfa Başlığı: {page_title}")
-                # Hata detayını kısa kes
+                # Hata durumunda sayfanın o anki HTML'inden ufak bir parça göster ki ne olduğunu anlayalım
+                body_text = driver.find_element(By.TAG_NAME, "body").text[:100]
+                print(f"   ❌ HATA ({fon_kodu}): Veri gelmedi. Sayfada görünen: {body_text}...")
                 continue
 
     except Exception as e:
-        print(f"GENEL HATA: {e}")
+        print(f"GENEL SİSTEM HATASI: {e}")
     finally:
         driver.quit()
         print("🛑 Tarayıcı Kapatıldı.")
@@ -84,7 +95,7 @@ def verileri_getir():
     if sonuclar:
         df = pd.DataFrame(sonuclar)
         
-        # Tarihe göre sırala
+        # Tarih Sıralama
         df['Tarih_Obj'] = pd.to_datetime(df['Tarih'], format='%d.%m.%Y', errors='coerce')
         df = df.sort_values(by='Tarih_Obj', ascending=False)
         df = df.drop(columns=['Tarih_Obj'])
@@ -92,10 +103,10 @@ def verileri_getir():
         # Kaydet
         df.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig', sep=';')
         
-        print(f"\nBAŞARILI! {len(df)} adet fon verisi çekildi.")
+        print(f"\nBAŞARILI! Toplam {len(df)} fon verisi CSV'ye yazıldı.")
         print(df[['Tarih', 'Fon Kodu', 'Fiyat']])
     else:
-        print("HATA: Liste boş kaldı.")
+        print("HATA: Hiçbir veri çekilemedi. TEFAS robotu engelliyor olabilir.")
 
 if __name__ == "__main__":
     verileri_getir()
