@@ -4,7 +4,7 @@ on:
   # 1. OTOMATİK ZAMANLAMA
   schedule:
     # UTC saatiyle 19:00 = Türkiye saatiyle 22:00
-    - cron: '0 18 14 * *'
+    - cron: '0 18 17 * *'
   
   # 2. MANUEL TETİKLEME BUTONU
   workflow_dispatch:
