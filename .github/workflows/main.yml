@@ -1,11 +1,8 @@
 name: Günlük Fon Güncellemesi
 
-# Ne zaman çalışacak?
 on:
   schedule:
-    # Türkiye saatiyle sabah 10:30 civarı (UTC 07:30)
     - cron: '30 07 * * *'
-  # Manuel çalıştırmak için buton koyuyoruz
   workflow_dispatch:
 
 permissions:
@@ -16,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Depoyu Kontrol Et (Checkout)
+    - name: Depoyu Kontrol Et
       uses: actions/checkout@v3
 
     - name: Python Kurulumu
@@ -28,12 +25,18 @@ jobs:
       run: |
         pip install -r requirements.txt
 
-    - name: Python Kodunu Çalıştır
+    - name: Scripti Çalıştır
       run: python main.py
 
-    - name: Değişiklikleri Kaydet (Git Push)
+    - name: Dosya Kontrolü ve Kayıt
       run: |
-        git config --global user.name 'GitHub Action Bot'
-        git config --global user.email 'action@github.com'
-        git add guncel_fonlar.csv
-        git diff --quiet && git diff --staged --quiet || (git commit -m "Otomatik Güncelleme" && git push)
+        # Dosya oluşmuş mu kontrol et
+        if [ -f guncel_fonlar.csv ]; then
+          git config --global user.name 'GitHub Action Bot'
+          git config --global user.email 'action@github.com'
+          git add guncel_fonlar.csv
+          # Sadece değişiklik varsa commit et, yoksa hata verme
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Günlük Güncelleme" && git push)
+        else
+          echo "DİKKAT: CSV dosyası oluşmadı, kayıt atlanıyor."
+        fi
