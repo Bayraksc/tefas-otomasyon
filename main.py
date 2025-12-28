@@ -10,45 +10,44 @@ def verileri_getir():
     
     # Bugünün tarihi
     bugun = datetime.now().date()
-    
-    # Çözüm: Son 30 günü tarayalım ki araya bayram/hafta sonu girse bile veri bulsun
+    # Geriye dönük 30 gün (Veri garanti olsun)
     baslangic = bugun - timedelta(days=30) 
     
-    print(f"Tarama Aralığı: {baslangic} - {bugun}")
+    print(f"Tarama: {baslangic} - {bugun}")
 
     try:
-        # 1. Geniş tarih aralığıyla veriyi çek
-        df = crawler.fetch(start_date=str(baslangic), end_date=str(bugun))
-        
+        # --- DÜZELTİLEN KISIM BURASI ---
+        # start_date yerine start, end_date yerine end kullanıyoruz
+        df = crawler.fetch(start=str(baslangic), end=str(bugun))
+        # -------------------------------
+
         if df is None or df.empty:
-            print("HATA: TEFAS'tan hiç veri dönmedi.")
+            print("HATA: Veri dönmedi.")
             return
 
-        # 2. Sadece bizim fonları filtrele
+        # Filtreleme
         df_bizim = df[df['code'].isin(FONLAR)].copy()
         
         if df_bizim.empty:
-            print("HATA: Seçilen fonlara ait veri bulunamadı.")
+            print("HATA: Belirtilen fonlar bulunamadı.")
             return
 
-        # 3. KRİTİK NOKTA: Her fon için en güncel tarihi bul
-        # Tarihe göre sırala (En yeni en üstte)
+        # En güncel veriyi al
         df_bizim = df_bizim.sort_values(by='date', ascending=False)
-        
-        # Her fon kodundan sadece ilkini (en güncelini) al
         df_sonuc = df_bizim.drop_duplicates(subset=['code'], keep='first')
         
-        # Sütunları düzenle
+        # Sütun seçimi ve Kayıt
         df_sonuc = df_sonuc[['date', 'code', 'title', 'price']]
-        
-        # 4. CSV oluştur (UTF-8 formatında, Excel uyumlu)
         df_sonuc.to_csv("guncel_fonlar.csv", index=False, encoding='utf-8-sig')
         
-        print(f"BAŞARILI! {len(df_sonuc)} adet fon verisi kaydedildi.")
+        print("BAŞARILI: Veriler CSV dosyasina yazildi.")
         print(df_sonuc)
 
     except Exception as e:
         print(f"SİSTEM HATASI: {e}")
+        # Hata detayını tam görelim
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     verileri_getir()
